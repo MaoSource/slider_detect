@@ -28,7 +28,7 @@ jobs:
     env:
       CARGO_BUILD_JOBS: 1
       RUST_BACKTRACE: 1
-      VCPKG_ROOT: C:\vcpkg
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
       VCPKGRS_DYNAMIC: 1
       VCPKGRS_TRIPLET: x86-windows
       VCPKG_DEFAULT_TRIPLET: x86-windows
@@ -36,6 +36,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
 
       - name: Setup MSVC x86 environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -51,6 +57,11 @@ jobs:
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "19"
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
 
       - name: Resolve vcpkg version
         id: vcpkg_version
@@ -74,9 +85,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            C:\vcpkg\installed
-            C:\vcpkg\buildtrees
-            C:\vcpkg\packages
+            ${{ env.VCPKG_ROOT }}\installed
+            ${{ env.VCPKG_ROOT }}\buildtrees
+            ${{ env.VCPKG_ROOT }}\packages
           key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ steps.vcpkg_version.outputs.version }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Install OpenCV
