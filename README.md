@@ -9,7 +9,7 @@ FindSliderPosition(bg_path, slider_path) -> *mut c_char
 FreeResult(ptr)
 ```
 
-`FindSliderPosition` 使用 C ABI，可供 32 位或 64 位易语言调用。返回值由 Rust 通过 `CString::into_raw()` 分配，调用方使用完字符串后必须调用 `FreeResult` 释放。
+`FindSliderPosition` 使用 C ABI，供 32 位易语言调用。返回值由 Rust 通过 `CString::into_raw()` 分配，调用方使用完字符串后必须调用 `FreeResult` 释放。
 
 ## 参数
 
@@ -29,7 +29,7 @@ FreeResult(ptr)
 
 ## 易语言调用说明
 
-请按易语言进程位数加载对应 DLL：32 位易语言加载 32 位 DLL，64 位易语言加载 64 位 DLL，不能混用。`FindSliderPosition` 返回的是字符串指针，读取字符串后必须调用 `FreeResult`。
+请使用 32 位易语言加载 32 位 DLL。`FindSliderPosition` 返回的是字符串指针，读取字符串后必须调用 `FreeResult`。
 
 示例声明思路：
 
@@ -50,22 +50,20 @@ FreeResult(ptr: 整数型/长整数型指针)
 推送到 GitHub 后，工作流会在 `windows-latest` 上执行：
 
 ```text
-cargo build --release --target x86_64-pc-windows-msvc
 cargo build --release --target i686-pc-windows-msvc
 ```
 
-产物会分别上传为 `SliderDetect-windows-x64` 和 `SliderDetect-windows-x86`，至少包含：
+产物会上传为 `SliderDetect-windows-x86`，至少包含：
 
 - `slider_detect.dll`
 - `SliderDetect.dll`，内容与 `slider_detect.dll` 相同，方便按建议名称分发
 - `README.md`
-- OpenCV 运行时 DLL，例如 `opencv_world*.dll`
+- vcpkg `x86-windows/bin` 下的运行时 DLL，包括 OpenCV 及其依赖 DLL
 
 最终 DLL 路径：
 
 ```text
-target/x86_64-pc-windows-msvc/release/slider_detect.dll
 target/i686-pc-windows-msvc/release/slider_detect.dll
 ```
 
-如果分发给易语言程序，请将 `slider_detect.dll` 和 OpenCV 运行时 DLL 放在同一目录，或放到系统 `PATH` 能找到的位置。
+如果分发给易语言程序，请将 `SliderDetect.dll` 和 artifact 中的运行时 DLL 放在同一目录，或放到系统 `PATH` 能找到的位置。

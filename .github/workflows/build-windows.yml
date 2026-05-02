@@ -1,4 +1,4 @@
-name: Build Windows DLLs
+name: Build Windows x86 DLL
 
 on:
   push:
@@ -10,21 +10,12 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            rust_target: x86_64-pc-windows-msvc
-            vcpkg_triplet: x64-windows
-          - arch: x86
-            rust_target: i686-pc-windows-msvc
-            vcpkg_triplet: x86-windows
 
     env:
       VCPKG_ROOT: C:\vcpkg
       VCPKGRS_DYNAMIC: 1
-      VCPKGRS_TRIPLET: ${{ matrix.vcpkg_triplet }}
+      VCPKGRS_TRIPLET: x86-windows
+      VCPKG_DEFAULT_TRIPLET: x86-windows
 
     steps:
       - name: Checkout
@@ -33,7 +24,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target }}
+          targets: i686-pc-windows-msvc
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2
@@ -47,40 +38,71 @@ jobs:
             C:\vcpkg\installed
             C:\vcpkg\buildtrees
             C:\vcpkg\packages
-          key: vcpkg-opencv4-${{ matrix.vcpkg_triplet }}-${{ runner.os }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Install OpenCV
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install "opencv4[world]:${{ matrix.vcpkg_triplet }}"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "opencv4[world]:x86-windows"
+
+      - name: Configure OpenCV for opencv crate
+        shell: pwsh
+        run: |
+          $prefix = "$env:VCPKG_ROOT\installed\x86-windows"
+          $includeDir = "$prefix\include"
+          $libDir = "$prefix\lib"
+          $binDir = "$prefix\bin"
+          $versionHeader = "$includeDir\opencv2\core\version.hpp"
+
+          if (-not (Test-Path $versionHeader)) {
+            Write-Host "Installed include files:"
+            Get-ChildItem $includeDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 80 | ForEach-Object { Write-Host $_.FullName }
+            throw "OpenCV version header was not found at $versionHeader"
+          }
+
+          $worldLib = @(Get-ChildItem $libDir -Filter "opencv_world*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "d\.lib$" } | Select-Object -First 1)[0]
+
+          if (-not $worldLib) {
+            Write-Host "Installed import libraries:"
+            Get-ChildItem $libDir -Filter "*.lib" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
+            throw "opencv_world*.lib was not found in $libDir"
+          }
+
+          Write-Host "Using OpenCV include dir: $includeDir"
+          Write-Host "Using OpenCV lib dir: $libDir"
+          Write-Host "Using OpenCV link lib: $($worldLib.BaseName)"
+          Write-Host "Available runtime DLLs:"
+          Get-ChildItem $binDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
+
+          "OPENCV_INCLUDE_PATHS=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENCV_LINK_PATHS=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENCV_LINK_LIBS=$($worldLib.BaseName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg_cmake,vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build release DLL
         shell: pwsh
         run: |
-          cargo build --release --target ${{ matrix.rust_target }}
+          cargo build --release --target i686-pc-windows-msvc
 
       - name: Prepare artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target\${{ matrix.rust_target }}\release\slider_detect.dll" dist\slider_detect.dll
-          Copy-Item "target\${{ matrix.rust_target }}\release\slider_detect.dll" dist\SliderDetect.dll
+          Copy-Item "target\i686-pc-windows-msvc\release\slider_detect.dll" dist\slider_detect.dll
+          Copy-Item "target\i686-pc-windows-msvc\release\slider_detect.dll" dist\SliderDetect.dll
           Copy-Item README.md dist\README.md
 
-          $opencvBin = "$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}\bin"
-          $opencvDlls = Get-ChildItem $opencvBin -Filter "opencv_world*.dll" -ErrorAction SilentlyContinue
-          if (-not $opencvDlls) {
-            $opencvDlls = Get-ChildItem $opencvBin -Filter "opencv_*.dll" -ErrorAction SilentlyContinue
-          }
-          foreach ($dll in $opencvDlls) {
+          $vcpkgBin = "$env:VCPKG_ROOT\installed\x86-windows\bin"
+          $runtimeDlls = Get-ChildItem $vcpkgBin -Filter "*.dll" -ErrorAction SilentlyContinue
+          foreach ($dll in $runtimeDlls) {
             Copy-Item $dll.FullName dist\
           }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SliderDetect-windows-${{ matrix.arch }}
+          name: SliderDetect-windows-x86
           path: |
-            target/${{ matrix.rust_target }}/release/slider_detect.dll
+            target/i686-pc-windows-msvc/release/slider_detect.dll
             README.md
             dist/**
