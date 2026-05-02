@@ -2,10 +2,24 @@ name: Build Windows x86 DLL
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-windows.yml"
   pull_request:
-    branches: ["**"]
+    branches: [master]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-windows.yml"
   workflow_dispatch:
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -31,6 +45,14 @@ jobs:
         with:
           version: "17"
 
+      - name: Resolve vcpkg version
+        id: vcpkg_version
+        shell: pwsh
+        run: |
+          $sha = (git -C $env:VCPKG_ROOT rev-parse HEAD).Trim()
+          Write-Host "vcpkg HEAD: $sha"
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Cache vcpkg
         uses: actions/cache@v4
         with:
@@ -38,7 +60,7 @@ jobs:
             C:\vcpkg\installed
             C:\vcpkg\buildtrees
             C:\vcpkg\packages
-          key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ steps.vcpkg_version.outputs.sha }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Install OpenCV
         shell: pwsh
@@ -49,18 +71,27 @@ jobs:
         shell: pwsh
         run: |
           $prefix = "$env:VCPKG_ROOT\installed\x86-windows"
-          $includeDir = "$prefix\include"
+          $includeCandidates = @(
+            "$prefix\include",
+            "$prefix\include\opencv4"
+          )
           $libDir = "$prefix\lib"
           $binDir = "$prefix\bin"
-          $versionHeader = "$includeDir\opencv2\core\version.hpp"
+          $includeDir = $includeCandidates |
+            Where-Object { Test-Path "$_\opencv2\core\version.hpp" } |
+            Select-Object -First 1
 
-          if (-not (Test-Path $versionHeader)) {
+          if (-not $includeDir) {
             Write-Host "Installed include files:"
-            Get-ChildItem $includeDir -Recurse -ErrorAction SilentlyContinue | Select-Object -First 80 | ForEach-Object { Write-Host $_.FullName }
-            throw "OpenCV version header was not found at $versionHeader"
+            Get-ChildItem "$prefix\include" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 120 | ForEach-Object { Write-Host $_.FullName }
+            throw "OpenCV version header was not found under $prefix\include"
           }
 
-          $worldLib = @(Get-ChildItem $libDir -Filter "opencv_world*.lib" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "d\.lib$" } | Select-Object -First 1)[0]
+          $versionHeader = "$includeDir\opencv2\core\version.hpp"
+
+          $worldLib = Get-ChildItem $libDir -Filter "opencv_world*.lib" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch "d\.lib$" } |
+            Select-Object -First 1
 
           if (-not $worldLib) {
             Write-Host "Installed import libraries:"
@@ -93,7 +124,7 @@ jobs:
           Copy-Item README.md dist\README.md
 
           $vcpkgBin = "$env:VCPKG_ROOT\installed\x86-windows\bin"
-          $runtimeDlls = Get-ChildItem $vcpkgBin -Filter "*.dll" -ErrorAction SilentlyContinue
+          $runtimeDlls = Get-ChildItem $vcpkgBin -Filter "opencv_*.dll" -ErrorAction SilentlyContinue
           foreach ($dll in $runtimeDlls) {
             Copy-Item $dll.FullName dist\
           }
@@ -102,7 +133,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SliderDetect-windows-x86
-          path: |
-            target/i686-pc-windows-msvc/release/slider_detect.dll
-            README.md
-            dist/**
+          path: dist/**
