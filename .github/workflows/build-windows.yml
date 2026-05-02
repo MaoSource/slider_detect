@@ -26,6 +26,8 @@ jobs:
     runs-on: windows-latest
 
     env:
+      CARGO_BUILD_JOBS: 1
+      RUST_BACKTRACE: 1
       VCPKG_ROOT: C:\vcpkg
       VCPKGRS_DYNAMIC: 1
       VCPKGRS_TRIPLET: x86-windows
@@ -34,6 +36,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup MSVC x86 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -89,9 +96,9 @@ jobs:
 
           $versionHeader = "$includeDir\opencv2\core\version.hpp"
 
-          $worldLib = Get-ChildItem $libDir -Filter "opencv_world*.lib" -ErrorAction SilentlyContinue |
+          $worldLib = @(Get-ChildItem $libDir -Filter "opencv_world*.lib" -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -notmatch "d\.lib$" } |
-            Select-Object -First 1
+            Select-Object -First 1)[0]
 
           if (-not $worldLib) {
             Write-Host "Installed import libraries:"
@@ -105,7 +112,12 @@ jobs:
           Write-Host "Available runtime DLLs:"
           Get-ChildItem $binDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
 
-          "OPENCV_INCLUDE_PATHS=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $opencvIncludePaths = @($includeDir)
+          if ($includeDir -ne "$prefix\include") {
+            $opencvIncludePaths += "$prefix\include"
+          }
+
+          "OPENCV_INCLUDE_PATHS=$($opencvIncludePaths -join ',')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENCV_LINK_PATHS=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENCV_LINK_LIBS=$($worldLib.BaseName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg_cmake,vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -113,7 +125,7 @@ jobs:
       - name: Build release DLL
         shell: pwsh
         run: |
-          cargo build --release --target i686-pc-windows-msvc
+          cargo build -vv --release --target i686-pc-windows-msvc
 
       - name: Prepare artifact
         shell: pwsh
@@ -124,7 +136,7 @@ jobs:
           Copy-Item README.md dist\README.md
 
           $vcpkgBin = "$env:VCPKG_ROOT\installed\x86-windows\bin"
-          $runtimeDlls = Get-ChildItem $vcpkgBin -Filter "opencv_*.dll" -ErrorAction SilentlyContinue
+          $runtimeDlls = Get-ChildItem $vcpkgBin -Filter "*.dll" -ErrorAction SilentlyContinue
           foreach ($dll in $runtimeDlls) {
             Copy-Item $dll.FullName dist\
           }

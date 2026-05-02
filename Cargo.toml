@@ -8,7 +8,7 @@ name = "slider_detect"
 crate-type = ["cdylib"]
 
 [dependencies]
-opencv = { version = "0.92", default-features = false, features = ["clang-runtime", "imgcodecs", "imgproc"] }
+opencv = { version = "0.98.2", default-features = false, features = ["clang-runtime", "imgcodecs", "imgproc"] }
 
 [profile.release]
 opt-level = 3
