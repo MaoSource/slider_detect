@@ -1,0 +1,86 @@
+name: Build Windows DLLs
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            vcpkg_triplet: x64-windows
+          - arch: x86
+            rust_target: i686-pc-windows-msvc
+            vcpkg_triplet: x86-windows
+
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKGRS_DYNAMIC: 1
+      VCPKGRS_TRIPLET: ${{ matrix.vcpkg_triplet }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17"
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\buildtrees
+            C:\vcpkg\packages
+          key: vcpkg-opencv4-${{ matrix.vcpkg_triplet }}-${{ runner.os }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
+
+      - name: Install OpenCV
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "opencv4[world]:${{ matrix.vcpkg_triplet }}"
+
+      - name: Build release DLL
+        shell: pwsh
+        run: |
+          cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\${{ matrix.rust_target }}\release\slider_detect.dll" dist\slider_detect.dll
+          Copy-Item "target\${{ matrix.rust_target }}\release\slider_detect.dll" dist\SliderDetect.dll
+          Copy-Item README.md dist\README.md
+
+          $opencvBin = "$env:VCPKG_ROOT\installed\${{ matrix.vcpkg_triplet }}\bin"
+          $opencvDlls = Get-ChildItem $opencvBin -Filter "opencv_world*.dll" -ErrorAction SilentlyContinue
+          if (-not $opencvDlls) {
+            $opencvDlls = Get-ChildItem $opencvBin -Filter "opencv_*.dll" -ErrorAction SilentlyContinue
+          }
+          foreach ($dll in $opencvDlls) {
+            Copy-Item $dll.FullName dist\
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SliderDetect-windows-${{ matrix.arch }}
+          path: |
+            target/${{ matrix.rust_target }}/release/slider_detect.dll
+            README.md
+            dist/**

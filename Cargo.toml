@@ -1,0 +1,14 @@
+[package]
+name = "slider_detect"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "slider_detect"
+crate-type = ["cdylib"]
+
+[dependencies]
+opencv = { version = "0.92", default-features = false, features = ["imgcodecs", "imgproc"] }
+
+[profile.release]
+opt-level = 3
