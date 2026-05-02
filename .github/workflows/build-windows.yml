@@ -28,7 +28,7 @@ jobs:
     env:
       CARGO_BUILD_JOBS: 1
       RUST_BACKTRACE: 1
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      LOCAL_VCPKG_ROOT: ${{ github.workspace }}\vcpkg
       VCPKGRS_DYNAMIC: 1
       VCPKGRS_TRIPLET: x86-windows
       VCPKG_DEFAULT_TRIPLET: x86-windows
@@ -61,18 +61,19 @@ jobs:
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          & "$env:LOCAL_VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          "VCPKG_ROOT=$env:LOCAL_VCPKG_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Resolve vcpkg version
         id: vcpkg_version
         shell: pwsh
         run: |
           $version = "unknown"
-          if (Test-Path "$env:VCPKG_ROOT\.git") {
-            $version = (git -C $env:VCPKG_ROOT rev-parse HEAD).Trim()
+          if (Test-Path "$env:LOCAL_VCPKG_ROOT\.git") {
+            $version = (git -C $env:LOCAL_VCPKG_ROOT rev-parse HEAD).Trim()
             Write-Host "vcpkg git HEAD: $version"
-          } elseif (Test-Path "$env:VCPKG_ROOT\vcpkg.exe") {
-            $version = (& "$env:VCPKG_ROOT\vcpkg.exe" version | Select-Object -First 1).Trim()
+          } elseif (Test-Path "$env:LOCAL_VCPKG_ROOT\vcpkg.exe") {
+            $version = (& "$env:LOCAL_VCPKG_ROOT\vcpkg.exe" version | Select-Object -First 1).Trim()
             Write-Host "vcpkg version: $version"
           } else {
             Write-Host "vcpkg version could not be resolved; using fallback cache key"
@@ -85,9 +86,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ${{ env.VCPKG_ROOT }}\installed
-            ${{ env.VCPKG_ROOT }}\buildtrees
-            ${{ env.VCPKG_ROOT }}\packages
+            ${{ env.LOCAL_VCPKG_ROOT }}\installed
+            ${{ env.LOCAL_VCPKG_ROOT }}\buildtrees
+            ${{ env.LOCAL_VCPKG_ROOT }}\packages
           key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ steps.vcpkg_version.outputs.version }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Install OpenCV
