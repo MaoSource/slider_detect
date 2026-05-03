@@ -3,6 +3,7 @@ name: Build Windows x86 DLL
 on:
   push:
     branches: [master]
+    tags: ["v*"]
     paths:
       - "src/**"
       - "Cargo.toml"
@@ -16,6 +17,9 @@ on:
       - "Cargo.lock"
       - ".github/workflows/build-windows.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: build-windows-${{ github.ref }}
@@ -58,6 +62,11 @@ jobs:
         with:
           version: "19"
 
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: i686-pc-windows-msvc
+
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
@@ -89,7 +98,8 @@ jobs:
             ${{ env.LOCAL_VCPKG_ROOT }}\installed
             ${{ env.LOCAL_VCPKG_ROOT }}\buildtrees
             ${{ env.LOCAL_VCPKG_ROOT }}\packages
-          key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ steps.vcpkg_version.outputs.version }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          # Bump the trailing version (v1 -> v2 ...) when you intentionally want to invalidate the OpenCV cache.
+          key: vcpkg-opencv4-x86-windows-${{ runner.os }}-${{ steps.vcpkg_version.outputs.version }}-v1
 
       - name: Install OpenCV
         shell: pwsh
@@ -168,3 +178,19 @@ jobs:
         with:
           name: SliderDetect-windows-x86
           path: dist/**
+
+      - name: Package release zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $zip = "SliderDetect-windows-x86-${{ github.ref_name }}.zip"
+          Compress-Archive -Path dist\* -DestinationPath $zip -Force
+          "RELEASE_ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_ZIP }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
