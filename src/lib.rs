@@ -176,6 +176,7 @@ fn detect_with_contours(bg_path: &str) -> Result<(i32, i32), String> {
         0.0,
         0.0,
         core::BORDER_DEFAULT,
+        core::AlgorithmHint::ALGO_HINT_DEFAULT,
     )
     .map_err(|e| e.to_string())?;
 
@@ -262,7 +263,14 @@ fn to_gray(image: &Mat) -> Result<Mat, String> {
         _ => return Err(format!("unsupported channel count: {channels}")),
     };
 
-    imgproc::cvt_color(image, &mut gray, code, 0).map_err(|e| e.to_string())?;
+    imgproc::cvt_color(
+        image,
+        &mut gray,
+        code,
+        0,
+        core::AlgorithmHint::ALGO_HINT_DEFAULT,
+    )
+    .map_err(|e| e.to_string())?;
     Ok(gray)
 }
 
